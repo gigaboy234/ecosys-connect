@@ -1,16 +1,10 @@
-from aiogram.fsm.state import State, StatesGroup
+from vkbottle.dispatch.dispenser.base import BaseStateGroup
 
 
-class StartupForm(StatesGroup):
-    name = State()
-    description = State()
-    tags = State()
-    stage = State()
-    needs = State()
-    contact = State()
-    confirm = State()
-
-
-class StartupEdit(StatesGroup):
-    choose_field = State()
-    edit_value = State()
+class StartupForm(BaseStateGroup):
+    NAME = "startup_name"
+    DESCRIPTION = "startup_description"
+    TAGS = "startup_tags"
+    STAGE = "startup_stage"
+    NEEDS = "startup_needs"
+    CONTACT = "startup_contact"

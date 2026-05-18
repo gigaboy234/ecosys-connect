@@ -1,9 +1,13 @@
-from aiogram.fsm.state import State, StatesGroup
+from vkbottle.dispatch.dispenser.base import BaseStateGroup
 
 
-class SearchState(StatesGroup):
-    browsing = State()
+class SearchState(BaseStateGroup):
+    BROWSING = "search_browsing"
 
 
-class ReportState(StatesGroup):
-    reason = State()
+class ReportState(BaseStateGroup):
+    REASON = "report_reason"
+
+
+class AdminState(BaseStateGroup):
+    WAITING = "admin_waiting"

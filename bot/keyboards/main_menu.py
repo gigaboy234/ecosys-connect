@@ -1,70 +1,83 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+import json
+
+from vkbottle import Keyboard, KeyboardButtonColor, Text
 
 from bot.database.models import UserRole
 
 
-def role_selection_kb() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🎓 Студент", callback_data="role:student"))
-    builder.row(InlineKeyboardButton(text="🚀 Стартап", callback_data="role:startup"))
-    builder.row(InlineKeyboardButton(text="👨‍🏫 Преподаватель", callback_data="role:teacher"))
-    builder.row(InlineKeyboardButton(text="🏭 Индустриальный партнёр", callback_data="role:partner"))
-    return builder.as_markup()
+def role_selection_kb() -> str:
+    kb = Keyboard(one_time=True)
+    kb.add(Text("🎓 Студент"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("🚀 Стартап"), color=KeyboardButtonColor.PRIMARY)
+    kb.row()
+    kb.add(Text("👨‍🏫 Преподаватель"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("🏭 Партнёр"), color=KeyboardButtonColor.PRIMARY)
+    return kb.get_json()
 
 
-def main_menu_kb(role: UserRole) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
+def main_menu_kb(role: UserRole) -> str:
+    kb = Keyboard(one_time=False)
 
     if role == UserRole.student:
-        builder.row(InlineKeyboardButton(text="👤 Мой профиль", callback_data="menu:profile"))
-        builder.row(InlineKeyboardButton(text="🚀 Найти стартап", callback_data="menu:search_startups"))
-        builder.row(InlineKeyboardButton(text="👨‍🏫 Найти преподавателя", callback_data="menu:search_teachers"))
-        builder.row(InlineKeyboardButton(text="➕ Создать стартап", callback_data="menu:create_startup"))
-        builder.row(InlineKeyboardButton(text="📬 Входящие заявки", callback_data="menu:incoming"))
+        kb.add(Text("👤 Мой профиль"), color=KeyboardButtonColor.SECONDARY)
+        kb.add(Text("🚀 Найти стартап"), color=KeyboardButtonColor.PRIMARY)
+        kb.row()
+        kb.add(Text("👨‍🏫 Найти преподавателя"), color=KeyboardButtonColor.PRIMARY)
+        kb.add(Text("➕ Создать стартап"), color=KeyboardButtonColor.POSITIVE)
+        kb.row()
+        kb.add(Text("📬 Входящие заявки"), color=KeyboardButtonColor.SECONDARY)
+        kb.add(Text("🔄 Сменить роль"), color=KeyboardButtonColor.NEGATIVE)
 
     elif role == UserRole.startup:
-        builder.row(InlineKeyboardButton(text="🚀 Мой стартап", callback_data="menu:my_startup"))
-        builder.row(InlineKeyboardButton(text="👥 Управление командой", callback_data="menu:team"))
-        builder.row(InlineKeyboardButton(text="👨‍🏫 Найти наставника", callback_data="menu:search_teachers"))
-        builder.row(InlineKeyboardButton(text="🏭 Найти партнёра", callback_data="menu:search_partners"))
-        builder.row(InlineKeyboardButton(text="📬 Входящие заявки", callback_data="menu:incoming"))
+        kb.add(Text("🚀 Мой стартап"), color=KeyboardButtonColor.SECONDARY)
+        kb.add(Text("👥 Команда"), color=KeyboardButtonColor.SECONDARY)
+        kb.row()
+        kb.add(Text("👨‍🏫 Найти наставника"), color=KeyboardButtonColor.PRIMARY)
+        kb.add(Text("🏭 Найти партнёра"), color=KeyboardButtonColor.PRIMARY)
+        kb.row()
+        kb.add(Text("📬 Входящие заявки"), color=KeyboardButtonColor.SECONDARY)
+        kb.add(Text("🔄 Сменить роль"), color=KeyboardButtonColor.NEGATIVE)
 
     elif role == UserRole.teacher:
-        builder.row(InlineKeyboardButton(text="👤 Мой профиль", callback_data="menu:profile"))
-        builder.row(InlineKeyboardButton(text="🚀 Найти стартап", callback_data="menu:search_startups"))
-        builder.row(InlineKeyboardButton(text="🎓 Найти студента", callback_data="menu:search_students"))
-        builder.row(InlineKeyboardButton(text="📬 Входящие заявки", callback_data="menu:incoming"))
+        kb.add(Text("👤 Мой профиль"), color=KeyboardButtonColor.SECONDARY)
+        kb.add(Text("🚀 Найти стартап"), color=KeyboardButtonColor.PRIMARY)
+        kb.row()
+        kb.add(Text("🎓 Найти студента"), color=KeyboardButtonColor.PRIMARY)
+        kb.add(Text("📬 Входящие заявки"), color=KeyboardButtonColor.SECONDARY)
+        kb.row()
+        kb.add(Text("🔄 Сменить роль"), color=KeyboardButtonColor.NEGATIVE)
 
     elif role == UserRole.partner:
-        builder.row(InlineKeyboardButton(text="🏭 Мой профиль", callback_data="menu:profile"))
-        builder.row(InlineKeyboardButton(text="🚀 Найти стартап", callback_data="menu:search_startups"))
-        builder.row(InlineKeyboardButton(text="🎓 Найти студента", callback_data="menu:search_students"))
-        builder.row(InlineKeyboardButton(text="📬 Входящие заявки", callback_data="menu:incoming"))
+        kb.add(Text("🏭 Мой профиль"), color=KeyboardButtonColor.SECONDARY)
+        kb.add(Text("🚀 Найти стартап"), color=KeyboardButtonColor.PRIMARY)
+        kb.row()
+        kb.add(Text("🎓 Найти студента"), color=KeyboardButtonColor.PRIMARY)
+        kb.add(Text("📬 Входящие заявки"), color=KeyboardButtonColor.SECONDARY)
+        kb.row()
+        kb.add(Text("🔄 Сменить роль"), color=KeyboardButtonColor.NEGATIVE)
 
-    builder.row(InlineKeyboardButton(text="🔄 Сменить роль", callback_data="menu:change_role"))
-    return builder.as_markup()
-
-
-def back_to_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")]
-    ])
+    return kb.get_json()
 
 
-def confirm_kb(confirm_data: str, cancel_data: str = "menu:main") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Подтвердить", callback_data=confirm_data),
-            InlineKeyboardButton(text="❌ Отмена", callback_data=cancel_data),
-        ]
-    ])
+def back_kb() -> str:
+    kb = Keyboard(one_time=False)
+    kb.add(Text("🏠 Главное меню"), color=KeyboardButtonColor.SECONDARY)
+    return kb.get_json()
 
 
-def yes_no_kb(yes_data: str, no_data: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Да", callback_data=yes_data),
-            InlineKeyboardButton(text="❌ Нет", callback_data=no_data),
-        ]
-    ])
+def confirm_kb() -> str:
+    kb = Keyboard(one_time=True)
+    kb.add(Text("✅ Подтвердить"), color=KeyboardButtonColor.POSITIVE)
+    kb.add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE)
+    return kb.get_json()
+
+
+def yes_no_kb() -> str:
+    kb = Keyboard(one_time=True)
+    kb.add(Text("✅ Да"), color=KeyboardButtonColor.POSITIVE)
+    kb.add(Text("❌ Нет"), color=KeyboardButtonColor.NEGATIVE)
+    return kb.get_json()
+
+
+def empty_kb() -> str:
+    return Keyboard(one_time=True).get_json()

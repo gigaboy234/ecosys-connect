@@ -1,213 +1,177 @@
-from aiogram import F, Router
-from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
-from sqlalchemy.ext.asyncio import AsyncSession
+from vkbottle.bot import BotLabeler, Message
+from vkbottle.dispatch.rules.base import StateRule
 
-from bot.database.crud.startups import (
-    create_startup,
-    get_startup_by_captain,
-    get_startup_by_id,
-    update_startup,
-)
+from bot.database.crud.startups import create_startup, get_startup_by_captain, update_startup
 from bot.database.crud.users import get_user_by_tg_id
-from bot.keyboards.main_menu import back_to_menu_kb, confirm_kb
-from bot.keyboards.registration import startup_needs_kb, startup_stage_kb
+from bot.database.db import AsyncSessionLocal
+from bot.database.models import Startup, StartupStage, UserRole
+from bot.keyboards.main_menu import back_kb, confirm_kb, main_menu_kb
+from bot.keyboards.registration import (
+    STARTUP_NEEDS,
+    STARTUP_STAGES,
+    startup_needs_kb,
+    startup_stage_kb,
+)
 from bot.states.startup_states import StartupForm
 from bot.utils.formatters import fmt_startup
-from bot.utils.validators import validate_text_length
+from bot.utils.validators import parse_comma_list, validate_text_length
 
-router = Router()
+labeler = BotLabeler()
 
-_STAGE_MAP = {
-    "Идея": "idea",
-    "MVP": "mvp",
-    "Прототип": "prototype",
-    "Масштабирование": "scaling",
-}
+_STAGE_MAP = {"Идея": "idea", "MVP": "mvp", "Прототип": "prototype", "Масштабирование": "scaling"}
 
 
-async def start_registration(message: Message, state: FSMContext) -> None:
-    await state.set_state(StartupForm.name)
-    await state.update_data(tags=[], needs=[])
-    await message.answer(
-        "📝 <b>Регистрация стартапа</b>\n\nВведите <b>название</b> вашего стартапа:",
-        parse_mode="HTML",
-    )
+async def start_registration(message: Message) -> None:
+    await message.state_peer.set(StartupForm.NAME)
+    await message.state_peer.set_data({"tags": [], "needs": []})
+    await message.answer("📝 Регистрация стартапа\n\nВведите название стартапа:")
 
 
-@router.callback_query(F.data == "menu:create_startup")
-async def create_startup_menu(
-    callback: CallbackQuery, session: AsyncSession, state: FSMContext
-) -> None:
-    user = await get_user_by_tg_id(session, callback.from_user.id)
-    existing = await get_startup_by_captain(session, user.id)
-    if existing:
-        await callback.message.edit_text(
-            f"У вас уже есть стартап: <b>{existing.name}</b>\n\n{fmt_startup(existing)}",
-            reply_markup=back_to_menu_kb(),
-            parse_mode="HTML",
-        )
-    else:
-        await callback.message.edit_text(
-            "Начинаем регистрацию стартапа...", parse_mode="HTML"
-        )
-        await start_registration(callback.message, state)
-    await callback.answer()
+@labeler.message(text="➕ Создать стартап")
+async def create_startup_menu(message: Message) -> None:
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_tg_id(session, message.from_id)
+        if not user:
+            return
+        existing = await get_startup_by_captain(session, user.id)
+        if existing:
+            await message.answer(
+                f"У вас уже есть стартап:\n\n{fmt_startup(existing)}",
+                keyboard=main_menu_kb(user.role),
+            )
+        else:
+            await start_registration(message)
 
 
-@router.message(StartupForm.name)
-async def startup_name(message: Message, state: FSMContext) -> None:
+@labeler.message(StateRule(StartupForm.NAME))
+async def startup_name(message: Message) -> None:
     if not validate_text_length(message.text, 2, 128):
-        await message.answer("Название должно быть от 2 до 128 символов:")
+        await message.answer("Название от 2 до 128 символов:")
         return
-    await state.update_data(name=message.text.strip())
-    await state.set_state(StartupForm.description)
-    await message.answer(
-        "Опишите ваш стартап:\n<i>Формат: Проблема → Решение</i>",
-        parse_mode="HTML",
-    )
+    d = await message.state_peer.get_data() or {}
+    d["name"] = message.text.strip()
+    await message.state_peer.set_data(d)
+    await message.state_peer.set(StartupForm.DESCRIPTION)
+    await message.answer("Опишите стартап:\n(Проблема → Решение)")
 
 
-@router.message(StartupForm.description)
-async def startup_description(message: Message, state: FSMContext) -> None:
+@labeler.message(StateRule(StartupForm.DESCRIPTION))
+async def startup_description(message: Message) -> None:
     if not validate_text_length(message.text, 20, 1000):
-        await message.answer("Описание должно быть от 20 до 1000 символов:")
+        await message.answer("Описание от 20 до 1000 символов:")
         return
-    await state.update_data(description=message.text.strip())
-    await state.set_state(StartupForm.tags)
-    await message.answer(
-        "Введите <b>теги</b> (технологическое направление) через запятую:\n"
-        "<i>Пример: AI, Медицина, IoT</i>",
-        parse_mode="HTML",
-    )
+    d = await message.state_peer.get_data() or {}
+    d["description"] = message.text.strip()
+    await message.state_peer.set_data(d)
+    await message.state_peer.set(StartupForm.TAGS)
+    await message.answer("Введите теги через запятую:\n(Пример: AI, Медицина, IoT)")
 
 
-@router.message(StartupForm.tags)
-async def startup_tags(message: Message, state: FSMContext) -> None:
-    from bot.utils.validators import parse_comma_list
+@labeler.message(StateRule(StartupForm.TAGS))
+async def startup_tags(message: Message) -> None:
     tags = parse_comma_list(message.text)
     if not tags:
         await message.answer("Введите хотя бы один тег:")
         return
-    await state.update_data(tags=tags)
-    await state.set_state(StartupForm.stage)
+    d = await message.state_peer.get_data() or {}
+    d["tags"] = tags
+    await message.state_peer.set_data(d)
+    await message.state_peer.set(StartupForm.STAGE)
+    await message.answer("Выберите стадию стартапа:", keyboard=startup_stage_kb())
+
+
+@labeler.message(StateRule(StartupForm.STAGE))
+async def startup_stage(message: Message) -> None:
+    if message.text not in STARTUP_STAGES:
+        await message.answer("Выберите из списка:", keyboard=startup_stage_kb())
+        return
+    d = await message.state_peer.get_data() or {}
+    d["stage"] = _STAGE_MAP[message.text]
+    await message.state_peer.set_data(d)
+    await message.state_peer.set(StartupForm.NEEDS)
     await message.answer(
-        "Выберите <b>стадию</b> вашего стартапа:",
-        reply_markup=startup_stage_kb(),
-        parse_mode="HTML",
+        "Кто вам нужен? (нажимайте кнопки, затем «➡️ Готово»):",
+        keyboard=startup_needs_kb([]),
     )
 
 
-@router.callback_query(StartupForm.stage, F.data.startswith("stage:"))
-async def startup_stage(callback: CallbackQuery, state: FSMContext) -> None:
-    stage_label = callback.data.split(":", 1)[1]
-    stage_value = _STAGE_MAP.get(stage_label, "idea")
-    await state.update_data(stage=stage_value)
-    await state.set_state(StartupForm.needs)
-    await callback.message.edit_text(
-        "Выберите, <b>кто вам нужен</b> в команду (можно несколько):",
-        reply_markup=startup_needs_kb([]),
-        parse_mode="HTML",
-    )
-    await callback.answer()
+@labeler.message(StateRule(StartupForm.NEEDS))
+async def startup_needs(message: Message) -> None:
+    d = await message.state_peer.get_data() or {}
+    needs: list = d.get("needs", [])
 
-
-@router.callback_query(StartupForm.needs, F.data.startswith("need:"))
-async def startup_needs_toggle(callback: CallbackQuery, state: FSMContext) -> None:
-    value = callback.data.split(":", 1)[1]
-    if value == "done":
-        data = await state.get_data()
-        if not data.get("needs"):
-            await callback.answer("Выберите хотя бы одну роль!", show_alert=True)
+    if message.text == "➡️ Готово":
+        if not needs:
+            await message.answer("Выберите хотя бы одну роль:", keyboard=startup_needs_kb(needs))
             return
-        await state.set_state(StartupForm.contact)
-        await callback.message.edit_text(
-            "Введите контактный <b>Telegram</b> для связи\n<i>Пример: @username</i>",
-            parse_mode="HTML",
-        )
-    else:
-        data = await state.get_data()
-        needs = data.get("needs", [])
-        if value in needs:
-            needs.remove(value)
+        await message.state_peer.set(StartupForm.CONTACT)
+        await message.answer("Введите Telegram-контакт для связи:\n(Пример: @username)")
+        return
+
+    if message.text in STARTUP_NEEDS:
+        if message.text in needs:
+            needs.remove(message.text)
         else:
-            needs.append(value)
-        await state.update_data(needs=needs)
-        await callback.message.edit_reply_markup(reply_markup=startup_needs_kb(needs))
-    await callback.answer()
+            needs.append(message.text)
+        d["needs"] = needs
+        await message.state_peer.set_data(d)
+
+    await message.answer(
+        f"Выбрано: {', '.join(needs) or 'ничего'}",
+        keyboard=startup_needs_kb(needs),
+    )
 
 
-@router.message(StartupForm.contact)
-async def startup_contact(message: Message, state: FSMContext) -> None:
-    contact = message.text.strip()
-    if not validate_text_length(contact, 2, 128):
+@labeler.message(StateRule(StartupForm.CONTACT))
+async def startup_contact(message: Message) -> None:
+    if not validate_text_length(message.text, 2, 128):
         await message.answer("Введите корректный контакт:")
         return
-    await state.update_data(contact=contact)
-    await state.set_state(StartupForm.confirm)
-
-    data = await state.get_data()
-    from bot.database.models import Startup, StartupStage
+    d = await message.state_peer.get_data() or {}
+    d["contact"] = message.text.strip()
+    await message.state_peer.set_data(d)
 
     preview = Startup(
-        captain_id=0,
-        name=data["name"],
-        description=data["description"],
-        tags=data.get("tags", []),
-        stage=StartupStage(data["stage"]),
-        needs=data.get("needs", []),
-        contact=data["contact"],
+        captain_id=0, name=d["name"], description=d["description"],
+        tags=d.get("tags", []), stage=StartupStage(d["stage"]),
+        needs=d.get("needs", []), contact=d["contact"],
     )
-
     await message.answer(
-        f"<b>Проверьте анкету стартапа:</b>\n\n{fmt_startup(preview)}\n\nВсё верно?",
-        reply_markup=confirm_kb("startup:save", "menu:main"),
-        parse_mode="HTML",
+        f"Проверьте анкету стартапа:\n\n{fmt_startup(preview)}\n\nВсё верно?",
+        keyboard=confirm_kb(),
     )
 
 
-@router.callback_query(F.data == "startup:save")
-async def startup_save(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
-    data = await state.get_data()
-    await state.clear()
+async def save_startup(message: Message) -> None:
+    d = await message.state_peer.get_data() or {}
+    await message.state_peer.delete()
 
-    user = await get_user_by_tg_id(session, callback.from_user.id)
-    existing = await get_startup_by_captain(session, user.id)
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_tg_id(session, message.from_id)
+        existing = await get_startup_by_captain(session, user.id)
+        if existing:
+            await update_startup(session, existing.id, d)
+        else:
+            await create_startup(session, user.id, d)
 
-    if existing:
-        await update_startup(session, existing.id, data)
-    else:
-        await create_startup(session, user.id, data)
-
-    from bot.keyboards.main_menu import main_menu_kb
-    from bot.database.models import UserRole
-
-    await callback.message.edit_text(
-        "✅ <b>Стартап зарегистрирован!</b>",
-        reply_markup=main_menu_kb(UserRole.student),
-        parse_mode="HTML",
-    )
-    await callback.answer()
+    await message.answer("✅ Стартап зарегистрирован!", keyboard=main_menu_kb(UserRole.student))
 
 
-@router.callback_query(F.data == "menu:my_startup")
-async def my_startup(callback: CallbackQuery, session: AsyncSession) -> None:
-    user = await get_user_by_tg_id(session, callback.from_user.id)
-    startup = await get_startup_by_captain(session, user.id)
-    if not startup:
-        await callback.message.edit_text(
-            "У вас нет зарегистрированного стартапа.",
-            reply_markup=back_to_menu_kb(),
-        )
-    else:
-        members_text = ""
-        if startup.members:
-            lines = [f"  • {m.user.username or 'User'} — {m.role_in_team}" for m in startup.members]
-            members_text = "\n👥 <b>Команда:</b>\n" + "\n".join(lines)
-
-        await callback.message.edit_text(
-            fmt_startup(startup) + members_text,
-            reply_markup=back_to_menu_kb(),
-            parse_mode="HTML",
-        )
-    await callback.answer()
+@labeler.message(text="🚀 Мой стартап")
+async def my_startup(message: Message) -> None:
+    async with AsyncSessionLocal() as session:
+        user = await get_user_by_tg_id(session, message.from_id)
+        if not user:
+            return
+        startup = await get_startup_by_captain(session, user.id)
+        if not startup:
+            await message.answer("У вас нет стартапа.", keyboard=back_kb())
+        else:
+            members_text = ""
+            if startup.members:
+                lines = [f"  • ID{m.user_id} — {m.role_in_team}" for m in startup.members]
+                members_text = "\n\n👥 Команда:\n" + "\n".join(lines)
+            await message.answer(
+                fmt_startup(startup) + members_text,
+                keyboard=main_menu_kb(user.role),
+            )

@@ -1,21 +1,15 @@
-from aiogram.fsm.state import State, StatesGroup
+from vkbottle.dispatch.dispenser.base import BaseStateGroup
 
 
-class StudentForm(StatesGroup):
-    name = State()
-    surname = State()
-    university = State()
-    year = State()
-    faculty = State()
-    directions = State()
-    tech_interests = State()
-    skills = State()
-    portfolio = State()
-    description = State()
-    goal = State()
-    confirm = State()
-
-
-class StudentEdit(StatesGroup):
-    choose_field = State()
-    edit_value = State()
+class StudentForm(BaseStateGroup):
+    NAME = "student_name"
+    SURNAME = "student_surname"
+    UNIVERSITY = "student_university"
+    YEAR = "student_year"
+    FACULTY = "student_faculty"
+    DIRECTIONS = "student_directions"
+    TECH_INTERESTS = "student_tech_interests"
+    SKILLS = "student_skills"
+    PORTFOLIO = "student_portfolio"
+    DESCRIPTION = "student_description"
+    GOAL = "student_goal"

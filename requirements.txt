@@ -1,5 +1,4 @@
-aiogram==3.13.1
-aiogram[redis]==3.13.1
+vkbottle==4.3.3
 
 sqlalchemy==2.0.36
 asyncpg==0.30.0
