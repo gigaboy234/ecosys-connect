@@ -1,0 +1,76 @@
+services:
+
+  # ── Telegram bot ────────────────────────────────────────────────────────────
+  bot:
+    build: .
+    container_name: ecosys_bot
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ecosys_net
+    volumes:
+      - ./bot:/app/bot   # hot-reload удобно при разработке
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecosys_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ecosys}
+      POSTGRES_USER: ${POSTGRES_USER:-ecosys}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - ecosys_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecosys} -d ${POSTGRES_DB:-ecosys}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ecosys_redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - ecosys_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Adminer (веб-панель для БД) ─────────────────────────────────────────────
+  adminer:
+    image: adminer:4-standalone
+    container_name: ecosys_adminer
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha-dark
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecosys_net
+
+networks:
+  ecosys_net:
+    driver: bridge
+
+volumes:
+  pg_data:
+  redis_data:

@@ -1,8 +1,9 @@
 import asyncio
 
 from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.redis import RedisStorage
 from loguru import logger
+from redis.asyncio import Redis
 
 from bot.config import settings
 from bot.database.db import AsyncSessionLocal, init_db
@@ -15,14 +16,15 @@ async def main() -> None:
     logger.info("Initialising database...")
     await init_db()
 
-    bot = Bot(token=settings.bot_token)
-    dp = Dispatcher(storage=MemoryStorage())
+    redis = Redis.from_url(settings.redis_url)
+    storage = RedisStorage(redis=redis)
 
-    # Middlewares
+    bot = Bot(token=settings.bot_token, parse_mode="HTML")
+    dp = Dispatcher(storage=storage)
+
     dp.update.middleware(DbSessionMiddleware(AsyncSessionLocal))
     dp.message.middleware(ThrottlingMiddleware(rate_limit=1.0))
 
-    # Routers (порядок важен: start первым, потом специфичные)
     dp.include_router(start.router)
     dp.include_router(student.router)
     dp.include_router(startup.router)
@@ -32,8 +34,12 @@ async def main() -> None:
     dp.include_router(requests.router)
     dp.include_router(admin.router)
 
-    logger.info("Bot started.")
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    logger.info("Bot started. Polling...")
+    try:
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    finally:
+        await redis.aclose()
+        await bot.session.close()
 
 
 if __name__ == "__main__":
